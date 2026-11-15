@@ -60,6 +60,8 @@ swift build -c release
 
 ## 打包成 .app（带图标）
 
+<img src="docs/icon.png" width="96" align="right" alt="图标">
+
 SPM 产物是裸可执行文件，macOS 会给它套通用的 unix executable 图标（就是你看到的那个「终端样」图标）。
 要正常图标和 Dock 行为，打成 bundle：
 
