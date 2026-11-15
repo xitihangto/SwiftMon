@@ -141,3 +141,113 @@ struct Sparkline: View {
         }
     }
 }
+
+// MARK: - 关于面板
+
+/// 自绘的「关于」窗口：图标 + 版本 + 它能测什么 + 数据来源与致谢。
+struct AboutView: View {
+    let onClose: () -> Void
+
+    private var version: String {
+        (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "dev"
+    }
+    private let subtle = Color(white: 0.55)
+
+    var body: some View {
+        VStack(spacing: 14) {
+            icon
+            VStack(spacing: 4) {
+                Text("SwiftMon")
+                    .font(.system(size: 24, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white)
+                Text("版本 \(version)").font(.system(size: 12, design: .monospaced)).foregroundStyle(subtle)
+                Text("Apple Silicon 实时监控").font(.system(size: 13)).foregroundStyle(Color(white: 0.75))
+            }
+
+            Divider().overlay(Color(white: 0.2))
+
+            VStack(alignment: .leading, spacing: 7) {
+                capability("cpu", "CPU 各簇占用与平均频率（pmgr DVFS 表）")
+                capability("display", "GPU 占用与频率")
+                capability("bolt.fill", "整机功耗（SMC）与 GPU 功耗（Energy Model）")
+                capability("memorychip", "内存 / swap / 压缩内存")
+                capability("gauge.with.dots.needle.50percent", "自监控：本程序自身 CPU 与内存")
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Divider().overlay(Color(white: 0.2))
+
+            VStack(spacing: 6) {
+                Text("数据源：IOReport 私有框架 + SMC · 不需要 sudo · 不调用 powermetrics")
+                    .font(.system(size: 11))
+                    .foregroundStyle(subtle)
+                    .multilineTextAlignment(.center)
+                Text("界面布局参考 macmon (MIT)")
+                    .font(.system(size: 11))
+                    .foregroundStyle(subtle)
+            }
+
+            HStack(spacing: 10) {
+                actionButton("GitHub 仓库", primary: false) {
+                    if let url = URL(string: "https://github.com/xitihangto/SwiftMon") {
+                        NSWorkspace.shared.open(url)
+                    }
+                }
+                actionButton("关闭", primary: true, action: onClose)
+                    .keyboardShortcut(.cancelAction)
+            }
+            .padding(.top, 2)
+        }
+        .padding(24)
+        .frame(width: 420, height: 460)
+        .background(Color(red: 0.07, green: 0.08, blue: 0.09))
+        .preferredColorScheme(.dark)
+    }
+
+    private var icon: some View {
+        Group {
+            if let image = NSApp.applicationIconImage {
+                Image(nsImage: image).resizable().interpolation(.high)
+            } else {
+                Image(systemName: "waveform.path.ecg")
+                    .resizable().scaledToFit().padding(18)
+                    .foregroundStyle(Color.green)
+            }
+        }
+        .frame(width: 96, height: 96)
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous)
+            .strokeBorder(Color(white: 0.22), lineWidth: 1))
+    }
+
+    private func actionButton(_ title: String, primary: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(primary ? Color.black : Color.white.opacity(0.9))
+                .padding(.horizontal, 14)
+                .padding(.vertical, 6)
+                .background(
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(primary ? Color.green.opacity(0.9) : Color(white: 0.18))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .strokeBorder(Color(white: 0.3), lineWidth: primary ? 0 : 1)
+                )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func capability(_ symbol: String, _ text: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Image(systemName: symbol)
+                .font(.system(size: 11))
+                .foregroundStyle(Color.green.opacity(0.85))
+                .frame(width: 16)
+            Text(text)
+                .font(.system(size: 12))
+                .foregroundStyle(Color(white: 0.8))
+        }
+    }
+}
