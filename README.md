@@ -48,7 +48,7 @@ macmon 的 TUI 是「上排 = 各 CPU 簇 + GPU + RAM，下排 = CPU/GPU/ANE/总
 ```bash
 swift build -c release
 
-# 图形界面
+# 图形界面（默认菜单栏形态，没有 Dock 图标）
 .build/release/SwiftMon
 
 # 文本模式（每行一帧，便于和系统工具交叉核对）
@@ -56,7 +56,41 @@ swift build -c release
 
 # 离屏渲染界面图（不需要屏幕录制权限，用于自检）
 .build/release/SwiftMon --snapshot /tmp/swiftmon.png
+.build/release/SwiftMon --snapshot-about /tmp/swiftmon-about.png
 ```
+
+## 菜单栏形态（唯一形态）
+
+应用**只**以菜单栏形态运行（`LSUIElement` + `accessory`）：没有 Dock 图标，也没有顶部菜单栏，
+屏幕上唯一的入口是菜单栏那个图标。
+
+| 操作 | 行为 |
+|---|---|
+| **左键点图标** | 把主窗口拿到最前面（只显示，不做开关；窗口被其他 App 挡住时点一下就回来） |
+| **右键点图标** | 弹出菜单：`关于 SwiftMon` / `退出 SwiftMon`（退出不二次确认） |
+| **关闭主窗口** | 不退出应用，回到菜单栏常驻 |
+| **点其他 App** | 本窗口被正常遮挡，不做置顶、不抢焦点 |
+
+「关于」是自绘的 SwiftUI 面板：图标、版本、能测什么、数据来源与致谢、仓库链接。
+
+<img src="docs/about.png" width="330" alt="关于面板">
+
+实现要点（`Sources/SwiftMon/main.swift`）：
+
+```swift
+// 同一个按钮区分左右键：左键显示窗口，右键弹菜单
+button.action = #selector(statusItemClicked(_:))
+button.sendAction(on: [.leftMouseUp, .rightMouseUp])
+
+func statusItemClicked(_ sender: NSStatusBarButton) {
+    let secondary = NSApp.currentEvent?.type == .rightMouseUp
+        || NSApp.currentEvent?.modifierFlags.contains(.control) == true
+    if secondary { contextMenu?.popUp(...) } else { showWindow() }
+}
+```
+
+> 早期版本做的是「左键切换显示/隐藏」，但快速连点会落到第二次点击上，表现为时灵时不灵。
+> 现在改成**左键只显示**，不再持有任何开关状态，逻辑上没有时序问题。
 
 ## 打包成 .app（带图标）
 
@@ -66,14 +100,19 @@ SPM 产物是裸可执行文件，macOS 会给它套通用的 unix executable �
 要正常图标和 Dock 行为，打成 bundle：
 
 ```bash
-./scripts/make-app.sh              # 生成 build/SwiftMon.app
-./scripts/make-app.sh --install    # 顺便装到 /Applications
-open build/SwiftMon.app
+./scripts/make-app.sh --open       # 构建 + 装到 /Applications + 从那里重启（日常用这条）
+./scripts/make-app.sh              # 构建 + 装到 /Applications（不启动）
+./scripts/make-app.sh --no-install # 只留在 build/ 里
 ```
 
-图标由 `scripts/make-icon.swift` 现画（深色圆角底 + E/P/GPU 三色 sparkline + 仪表弧），
+> 默认会**同时**产出 `build/SwiftMon.app` 并覆盖安装到 `/Applications/SwiftMon.app`，
+> 这样才能在 Finder / 启动台里找到它。安装前会自动退出正在运行的实例。
+
+图标由 `scripts/make-icon.swift` 现画：**直接取 SF Symbol `waveform.path.ecg` 的字形等比放大**
+（和菜单栏图标同一个字形，不是手画近似），用 `sourceIn` 把绿 → 橙 → 紫的渐变灌进字形里，
+再叠在深色圆角底上。换字形只改脚本里 `symbolName` 一行。
 再用 `sips` 生成 10 个尺寸、`iconutil` 合并成 `AppIcon.icns`；`Info.plist` 里
-`CFBundleIconFile=AppIcon`、bundle id 为 `local.swiftmon.app`。
+`CFBundleIconFile=AppIcon`、bundle id 为 `local.swiftmon.app`、`LSUIElement=true`（默认无 Dock 图标）。
 
 ## 验收记录（本机：Apple M4 / 16 GB / macOS 27.2）
 
@@ -83,9 +122,12 @@ open build/SwiftMon.app
 | 数值对齐 `top`（CPU） | 本程序 15–24% / `top` 20.9%（同窗口采样） |
 | 数值对齐 `top`（内存） | 本程序 15.5–15.8 GB / `top` 15 GB，偏差 <5% |
 | 功耗合理性 | SMC 整机 5.8–13.3 W，GPU 0.3–0.5 W（M4 Mac mini 量级正确） |
-| 自身开销 | GUI：**CPU 0.3%、RSS 102 MB**；文本模式：**CPU 0.6%、RSS 11 MB** |
+| 自身开销 | GUI：**CPU 0.6–3.6%（前台可见时）/ 遮挡或隐藏时接近 0，RSS 103 MB**；文本模式：**CPU 0.6%、RSS 10 MB** |
 | UI 渲染 | `--snapshot` 输出 940×500 @2x PNG，8 张卡片与曲线均正常绘制 |
 | 打包 | `plutil -lint` 通过；`AppIcon.icns` 含 10 个尺寸；`open SwiftMon.app` 后窗口 940×508 正常 |
+| 菜单栏形态 | `lsappinfo` 报 `type="UIElement"`（无 Dock 图标）；状态栏项 `visible=true` 且带模板图；主窗口 layer 0 在屏 |
+| 右键菜单内容 | 内部自检输出 `menu=["关于 SwiftMon", "---", "退出 SwiftMon"]` |
+| 关于面板 | `--snapshot-about` 离屏渲染 420×460 @2x 正常出图（图标/版本/能力清单/按钮） |
 
 ## 实现要点（踩过的坑）
 
