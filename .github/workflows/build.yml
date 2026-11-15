@@ -1,0 +1,33 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Swift version
+        run: swift --version
+
+      - name: Build (debug)
+        run: swift build
+
+      - name: Build (release)
+        run: swift build -c release
+
+      - name: Smoke test (text mode)
+        run: .build/release/SwiftMon --dump 2 0.5
+
+      - name: Package .app
+        run: ./scripts/make-app.sh
+
+      - name: Verify bundle
+        run: |
+          plutil -lint build/SwiftMon.app/Contents/Info.plist
+          test -f build/SwiftMon.app/Contents/Resources/AppIcon.icns
